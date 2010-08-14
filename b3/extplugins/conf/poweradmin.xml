@@ -1,0 +1,29 @@
+<configuration plugin="poweradmin">
+	<settings name="commands">
+
+		<set name="paswitch-switch">40</set>
+		<set name="paswitchall-switchall">100</set>
+		<set name="paforcespec-fs">20</set>
+		<set name="pakillplayer-slay">100</set>
+		<set name="paforce-force">100</set>
+		<set name="pascore-score">100</set>
+		<set name="padeath-death">100</set>
+		<set name="palosepoint-losepoint">100</set>
+		<set name="pacompensate-compensate">100</set>
+		<set name="paendmap-endmap">100</set>
+		<set name="pasaybold-saybold">40</set>
+		<set name="parename-rename">40</set>
+		<set name="paforceallspec-faspec">100</set>
+		<set name="pashock-shock">40</set>
+		<set name="paburn-burn">60</set>
+		<set name="paexplode-explode">100</set>
+		<!-- Next two commands are disabled by default -->
+        <set name="paenforce-enforce">1000</set>
+		<set name="paretaliate-retaliate">1000</set>
+		<set name="pamaprestart-mrs">40</set>
+		<set name="paset-cset">40</set>
+		<set name="paget-cget">40</set>
+		<set name="paexec-cexec">40</set>
+
+	</settings>
+</configuration>

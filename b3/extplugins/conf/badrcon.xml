@@ -1,0 +1,31 @@
+<configuration plugin="badrcon">
+	<settings name="commands">
+		<set name="stickip">20</set>
+		<set name="unstickip">20</set>
+        <set name="listips">20</set>
+	<!-- These commands protect an IP -->	
+		<set name="ipsafe">60</set>
+		<set name="ipunsafe">60</set>
+		<set name="ipsafelist">60</set>
+	</settings>
+    <!-- Do not touch these unless you know exactly what your doing    -->
+	<settings name="settings">
+    <!-- Console log file, or other log if your using this to monitor something else -->
+		<set name="log">X:\games\cod2\18_60\82ndab\console_mp.log</set>
+	<!-- How often do you want to check the log, based on single core at 1ghz, 30 seconds is optimal
+		 faster for more protection, slower for less hard drive access, note: Openwarfare can cause long read times -->
+		<set name="interval">30</set>
+    <!-- tp is the Test Phrase used to find the line -->    
+		<set name="tp">Bad rcon</set>
+    <!-- grace is the number of bad tries, or test phrases allowed before ban -->
+		<set name="grace">5</set>
+    <!-- These commands are used to send commands to the operating system
+         Default is set for Windows Server 2003 using netsh method,
+         These can be set for Linux to add to host deny, iptables 
+         or create a file for fail2ban (seems pointless huh?). 
+         XXX = location to insert IP -->
+		<set name="bancommand">netsh ipsec static add filter filterlist="BannedIPS" srcaddr=XXX dstaddr=me description=XXX protocol=any srcport=0 dstport=0</set>
+		<set name="unbancommand">netsh ipsec static delete filter filterlist="BannedIPS" srcaddr=XXX</set>
+		<set name="listbancommand">netsh ipsec static show filterlist name="BannedIPS" level=verbose</set>
+    </settings>
+</configuration>

@@ -1,0 +1,5 @@
+<configuration plugin="mod">
+   <settings name="commands">
+      <set name="fail">20</set>
+   </settings>
+</configuration>

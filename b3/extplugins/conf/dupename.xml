@@ -1,0 +1,5 @@
+<configuration plugin="dupename">
+	<settings name="settings">
+		<set name="interval">420</set>
+	</settings>
+</configuration>

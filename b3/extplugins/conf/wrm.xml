@@ -1,0 +1,18 @@
+<configuration plugin="wrm">
+	<settings name="commands">		
+		<set name="wrmvsclan-wrmclan">40</set>
+		<set name="wrmvsteam-wrmteam">40</set>
+		<set name="wrmsdtype-sd">40</set>		
+		<set name="wrmceasefire-cf">40</set>
+		<set name="wrmnades-nades">40</set>
+		<set name="wrmpractice-practice">40</set>
+		<set name="wrmtest-test">40</set>
+		
+		<set name="gametype-gt">40</set>
+		<set name="setmp-iammp">40</set>
+		<set name="mapreload-mrl">40</set>
+		<set name="maprestart-mrs">40</set>
+		
+		<set name="mp">0</set>
+	</settings>
+</configuration>
