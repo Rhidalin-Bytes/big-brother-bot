@@ -1,0 +1,11 @@
+*.pyc
+*.log
+*.log.1
+*.log.2
+*.log.3
+*.log.4
+*.log.5
+releases/*
+build/*
+py2exe_builder/Output/
+
