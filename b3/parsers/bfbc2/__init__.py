@@ -137,6 +137,12 @@
 # * Added needConfirmation var to write() so we can test on the confirmationtype ("OK", "NotFound") sent by the server on rcon.
 # 2010-07-30 - 1.3.3 - xlr8or
 # * Added joinClient() to OnServerLevelstarted() so rounds are counted for playerstats
+# 2010-07-30 - 1.3.4 - xlr8or
+# * Quick mapretrieval on startup
+# 2010-07-30 - 1.3.5 - xlr8or
+# * Fixed self.game.rounds
+# 2010-08-15 - 1.3.6 - xlr8or
+# * minor updates
 #
 #
 # ===== B3 EVENTS AVAILABLE TO PLUGIN DEVELOPERS USING THIS PARSER ======
@@ -148,6 +154,7 @@
 # EVT_CLIENT_TEAM_SAY
 # EVT_CLIENT_PRIVATE_SAY
 # EVT_CLIENT_CONNECT
+# EVT_CLIENT_DISCONNECT
 # EVT_CLIENT_SUICIDE
 # EVT_CLIENT_KILL_TEAM
 # EVT_CLIENT_KILL
@@ -171,7 +178,7 @@
 #
 
 __author__  = 'Courgette, SpacepiG, Bakes'
-__version__ = '1.3.3'
+__version__ = '1.3.5'
 
 
 import sys, time, re, string, traceback
@@ -324,6 +331,7 @@ class Bfbc2Parser(b3.parser.Parser):
         
         self.getServerVars()
         self.getServerInfo()
+        self.verbose('GameType: %s, Map: %s' %(self.game.gameType, self.game.mapName))
         
         self.info('connecting all players...')
         plist = self.getPlayerList()
@@ -523,7 +531,8 @@ class Bfbc2Parser(b3.parser.Parser):
         """
         #player.onJoin: ['OrasiK']
         client = self.getClient(data[0], data[1])
-        return b3.events.Event(b3.events.EVT_CLIENT_CONNECT, data, client)
+        # No need to queue a client join event, that is done by clients.newClient() already
+        # return b3.events.Event(b3.events.EVT_CLIENT_CONNECT, data, client)
 
 
     def OnPlayerSpawn(self, action, data):
@@ -649,7 +658,11 @@ class Bfbc2Parser(b3.parser.Parser):
         server.onLevelStarted
         
         Effect: Level is started"""
+        # next function call will increase roundcount by one, this is not correct, need to deduct one to compensate
+        # we'll still leave the call here since it provides us self.game.roundTime()
         self.game.startRound()
+        self.game.rounds -= 1
+        
         #Players need to be joined (EVT_CLIENT_JOIN) for stats to count rounds
         self.joinPlayers()
         return b3.events.Event(b3.events.EVT_GAME_ROUND_START, self.game)
@@ -1166,7 +1179,6 @@ class Bfbc2Parser(b3.parser.Parser):
             self.queueEvent(b3.events.Event(b3.events.EVT_CLIENT_JOIN, p, client))
         
         return client
-        
 
 
     def getPlayerList(self, maxRetries=None):
@@ -1251,6 +1263,8 @@ class Bfbc2Parser(b3.parser.Parser):
         self.game.sv_hostname = data[0]
         self.game.sv_maxclients = int(data[2])
         self.game.gameType = data[3]
+        if not self.game.mapName:
+            self.game.mapName = data[4]
         self.game.rounds = int(data[5])
         self.game.g_maxrounds = int(data[6])
         return data

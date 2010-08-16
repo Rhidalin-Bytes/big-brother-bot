@@ -1,4 +1,4 @@
-# Smoking' Guns 1.1 parser for BigBrotherBot(B3) (www.bigbrotherbot.net)
+# OpenArena 0.8.1 parser for BigBrotherBot(B3) (www.bigbrotherbot.net)
 # Copyright (C) 2009 ailmanki
 # 
 # This program is free software; you can redistribute it and/or modify
@@ -16,50 +16,37 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA    02110-1301    USA
 #
 # CHANGELOG
-# 31/01/2010 - 0.1 - Courgette
-# * use the new /cp command to send private messages (requires SmokinGuns v1.1)
-# 31/01/2010 - 0.1.1 - Courgette
-# * getMap() is now inherited from q3a
-# 01/02/2010 - 0.2 - Courgette
-# * fix _regPlayer regex for SGv1.1b4
-# * discover clients at bot start
-# * make use of dumpuser to get a player's ip
-# * don't lower() guid
-# 06/02/2010 - 0.3 - Courgette
-# * enable private messaging with the new /tell command
-# * fix ban command
-# 06/02/2010 - 0.4 - Courgette
-# * parser recognizes damage lines (when enabled in SG config with : set g_debugDamage "1")
-# 04/03/2010 - 0.5 - Courgette
-# * OnClientuserinfo -> OnClientuserinfochanged 
-# 06/03/2010 - 0.6 - Courgette
-# * make sure bots are bots on client connection
-# * auth client by making use of dumpuser whenever needed
-# * add custom handling of OnItem action
-# * add the money property to clients that holds the amount of money a player has
-# 07/03/2010 - 0.7 - Courgette
-# * when players buy stuff or pickup money, EVT_CLIENT_ITEM_PICKUP events are replaced by
-#   two SG specific new events : EVT_CLIENT_GAIN_MONEY and EVT_CLIENT_SPEND_MONEY
-#   Those events help keeping track of money flows and should give plugin developpers 
-#   a lot of freedom
-# 07/03/2010 - 0.8 - Courgette
-# * fix bug introduced in 0.6 which messed up clients cid as soon as they are chatting...
-# 08/03/2010 - 0.9 - Courgette
-# * should fix the bot's team issue
+# 08/08/2010 - 0.1 - Courgette
+# * creation based on smg11 parser
+# 09/08/2010 - 0.2 - Courgette
+# * implement rotatemap()
+# 09/08/2010 - 0.3 - Courgette & GrosBedo
+# * bot now recognize /tell commands correctly
+# 10/08/2010 - 0.4 - Courgette
+# * recognizes MOD_SUICIDE as suicide
+# * get rid of PunkBuster related code
+# * should \rcon dumpuser in cases the ClientUserInfoChanged line does not have
+#   guid while player is not a bot. (untested, cannot reproduce)
+# 11/08/2010 - 0.5 - GrosBedo
+# * minor fix for the /rcon dumpuser when no guid
+# * added !nextmap (with recursive detection !)
+# 11/08/2010 - 0.6 - GrosBedo
+# * fixed the permanent ban command (banClient -> banaddr)
+# 12/08/2010 - 0.7 - GrosBedo
+# * added weapons and means of death. Define what means of death are suicides
 #
 
 
-__author__  = 'xlr8or, Courgette'
-__version__ = '0.9'
+__author__  = 'Courgette, GrosBedo'
+__version__ = '0.7'
 
 import re, string, thread, time, threading
 import b3
 import b3.events
 import b3.parsers.q3a
-import b3.parsers.punkbuster
 
-class Smg11Parser(b3.parsers.q3a.Q3AParser):
-    gameName = 'smg'
+class Oa081Parser(b3.parsers.q3a.Q3AParser):
+    gameName = 'oa081'
     _connectingSlots = []
     _maplist = None
     
@@ -70,12 +57,14 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
     _empty_name_default = 'EmptyNameDefault'
 
     _commands = {}
-    _commands['message'] = 'tell %(cid)s %(prefix)s ^3[pm]^7 %(message)s'
-    _commands['deadsay'] = 'tell %(cid)s %(prefix)s [DEAD]^7 %(message)s'
+    #_commands['message'] = 'tell %(cid)s %(prefix)s ^3[pm]^7 %(message)s'
+    #_commands['deadsay'] = 'tell %(cid)s %(prefix)s [DEAD]^7 %(message)s'
+    _commands['message'] = 'say %(prefix)s ^3[pm]^7 %(message)s'
+    _commands['deadsay'] = 'say %(prefix)s [DEAD]^7 %(message)s'
     _commands['say'] = 'say %(prefix)s %(message)s'
     _commands['set'] = 'set %(name)s "%(value)s"'
     _commands['kick'] = 'clientkick %(cid)s'
-    _commands['ban'] = 'banClient %(cid)s'
+    _commands['ban'] = 'banaddr %(cid)s' #addip for q3a
     _commands['tempban'] = 'clientkick %(cid)s'
 
     _eventMap = {
@@ -98,6 +87,11 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
         #
         re.compile(r'^(?P<action>[a-z]+):\s*(?P<data>(?P<cid>[0-9]+):\s*(?P<text>.*))$', re.IGNORECASE),
         re.compile(r'^(?P<action>[a-z]+):\s*(?P<data>(?P<cid>[0-9]+)\s(?P<text>.*))$', re.IGNORECASE),
+
+        # 81:16 tell: grosbedo to courgette: !help
+        # 81:16 say: grosbedo: !help
+        re.compile(r'^(?P<action>tell):\s(?P<data>(?P<name>.+) to (?P<aname>.+): (?P<text>.*))$', re.IGNORECASE),
+
         #
         # Falling through?
         # 1:05 ClientConnect: 3
@@ -116,70 +110,59 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
 
     PunkBuster = None
 
-    ## kill mode constants: modNames[meansOfDeath]
-    MOD_UNKNOWN='0'
-    #melee
-    MOD_KNIFE='1'
-    #pistols
-    MOD_REM58='2'
-    MOD_SCHOFIELD='3'
-    MOD_PEACEMAKER='4'
-    #rifles
-    MOD_WINCHESTER66='5'
-    MOD_LIGHTNING='6'
-    MOD_SHARPS='7'
-    #shotguns
-    MOD_REMINGTON_GAUGE='8'
-    MOD_SAWEDOFF='9'
-    MOD_WINCH97='10'
-    #automatics
-    MOD_GATLING='11'
-    #explosives
-    MOD_DYNAMITE='12'
-    MOD_MOLOTOV='13'
-    #misc
-    MOD_WATER='14'
-    MOD_SLIME='15'
-    MOD_LAVA='16'
-    MOD_CRUSH='17'
-    MOD_TELEFRAG='18'
-    MOD_FALLING='19'
-    MOD_SUICIDE='20'
-    MOD_WORLD_DAMAGE='21'
-    MOD_TRIGGER_HURT='22'
-    MOD_NAIL='23'
-    MOD_CHAINGUN='24'
-    MOD_PROXIMITY_MINE='25'
-    MOD_BOILER='26'
 
+    ##  means of death
+    #===========================================================================
+    MOD_UNKNOWN = 0
+    MOD_SHOTGUN = 1
+    MOD_GAUNTLET = 2
+    MOD_MACHINEGUN = 3
+    MOD_GRENADE = 4
+    MOD_GRENADE_SPLASH = 5
+    MOD_ROCKET = 6
+    MOD_ROCKET_SPLASH = 7
+    MOD_PLASMA = 8
+    MOD_PLASMA_SPLASH = 9
+    MOD_RAILGUN = 10
+    MOD_LIGHTNING = 11
+    MOD_BFG = 12
+    MOD_BFG_SPLASH = 13
+    MOD_WATER = 14
+    MOD_SLIME = 15
+    MOD_LAVA = 16
+    MOD_CRUSH = 17
+    MOD_TELEFRAG = 18
+    MOD_FALLING = 19
+    MOD_SUICIDE = 20
+    MOD_TARGET_LASER = 21
+    MOD_TRIGGER_HURT = 22
+    # #ifdef MISSIONPACK
+    MOD_NAIL = 23
+    MOD_CHAINGUN = 24
+    MOD_PROXIMITY_MINE = 25
+    MOD_KAMIKAZE = 26
+    MOD_JUICED = 27
+    # #endif
+    MOD_GRAPPLE = 28
+    #===========================================================================
+
+    
     ## meansOfDeath to be considered suicides
     Suicides = (
         MOD_WATER,
         MOD_SLIME,
         MOD_LAVA,
         MOD_CRUSH,
-        MOD_TELEFRAG,
         MOD_FALLING,
         MOD_SUICIDE,
         MOD_TRIGGER_HURT,
-        MOD_NAIL,
-        MOD_CHAINGUN,
-        MOD_PROXIMITY_MINE,
-        MOD_BOILER
     )
-
 #---------------------------------------------------------------------------------------------------
 
     def startup(self):
     
-        # add SG specific events
-        self.Events.createEvent('EVT_CLIENT_GAIN_MONEY', 'Client gain money')
-        self.Events.createEvent('EVT_CLIENT_SPEND_MONEY', 'Client spend money')
-
         # add the world client
         self.clients.newClient(1022, guid='WORLD', name='World', hide=True, pbid='WORLD')
-        #if not self.config.has_option('server', 'punkbuster') or self.config.getboolean('server', 'punkbuster'):
-        #    self.PunkBuster = b3.parsers.punkbuster.PunkBuster(self)
 
         # get map from the status rcon command
         map = self.getMap()
@@ -263,10 +246,13 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
                         guid = 'BOT-' + str(cid)
                         self.verbose('BOT connected!')
                         self.clients.newClient(cid, name=bclient['name'], ip='0.0.0.0', state=b3.STATE_ALIVE, guid=guid, data={ 'guid' : guid }, money=20)
+                        self._connectingSlots.remove(cid)
+                        return None
                     else:
-                        self.warning('cannot connect player because he has no guid and is not a bot either')
-                    self._connectingSlots.remove(cid)
-                    return None
+                        self.info('we are missing the guid but this is not a bot either, dumpuser')
+                        self._connectingSlots.remove(cid)
+                        self.OnClientuserinfochanged(None, self.queryClientUserInfoByCid(cid))
+                        return
                 
                 if not bclient.has_key('ip'):
                     infoclient = self.parseUserInfo(self.queryClientUserInfoByCid(cid))
@@ -363,10 +349,29 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
 
         return b3.events.Event(b3.events.EVT_GAME_ROUND_START, self.game)
 
+
     def OnSayteam(self, action, data, match=None):
         # Teaminfo does not exist in the sayteam logline. Parse it as a normal say line
         return self.OnSay(action, data, match)
-    
+
+
+    def OnTell(self, action, data, match=None):
+        #5:27 tell: woekele to XLR8or: test
+
+        client = self.clients.getByExactName(match.group('name'))
+        tclient = self.clients.getByExactName(match.group('aname'))
+
+        if not client:
+            self.verbose('No Client Found')
+            return None
+
+        data = match.group('text')
+        if data and ord(data[:1]) == 21:
+            data = data[1:]
+
+        client.name = match.group('name')
+        return b3.events.Event(b3.events.EVT_CLIENT_PRIVATE_SAY, data, client, tclient)
+
     
     def OnItem(self, action, data, match=None):
         #Item: 0 pickup_money (5) picked up ($25)
@@ -375,26 +380,6 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
         cid, item = string.split(data, ' ', 1)
         client = self.getByCidOrJoinPlayer(cid)
         if client:
-            if 'pickup_money' in item:
-                rePickup_money = re.compile(r"^pickup_money \((?P<amount>\d+)\) picked up \(\$(?P<totalmoney>\d+)\)$")
-                m = rePickup_money.search(item)
-                if m is not None:
-                    amount = m.group('amount')
-                    totalmoney = m.group('totalmoney')
-                    setattr(client, 'money', int(totalmoney))
-                    self.verbose('%s has now $%s' % (client.name, client.money))
-                    return b3.events.Event(b3.events.EVT_CLIENT_GAIN_MONEY, {'amount': amount, 'totalmoney': totalmoney}, client)
-            if 'bought' in item:
-                reBought = re.compile(r"^(?P<item>.+) bought \(\$(?P<cost>\d+)/\$(?P<totalmoney>\d+)\)$")
-                m = reBought.search(item)
-                if m is not None:
-                    what = m.group('item')
-                    cost = m.group('cost')
-                    totalmoney = m.group('totalmoney')
-                    if cost is not None and totalmoney is not None:
-                        setattr(client, 'money', int(totalmoney) - int(cost))
-                        self.verbose('%s has now $%s' % (client.name, client.money))
-                        return b3.events.Event(b3.events.EVT_CLIENT_SPEND_MONEY, {'item': what, 'cost': cost, 'totalmoney': client.money}, client)
             return b3.events.Event(b3.events.EVT_CLIENT_ITEM_PICKUP, item, client)
         return None
     
@@ -426,7 +411,7 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
 #---------------------------------------------------------------------------------------------------
 
     def parseUserInfo(self, info):
-        #ClientUserinfoChanged: 0 guid\0F4EE0CC25562B035AC58D081E517D8A\n\Courgette\t\3\model\wq_male1\g_redteam\Lawmen\g_blueteam\Outlaws\hc\100\w\0\l\0\tt\0\tl\0\v\1.1b4 20100116\md5\9F13F403F961CA6900C849D017F9E3E9
+        #ClientUserinfoChanged: 0 n\Courgette\t\0\model\sarge/classic\hmodel\sarge/classic\g_redteam\\g_blueteam\\c1\2\c2\7\hc\100\w\0\l\0\tt\0\tl\0\id\201AB4BBC40B4EC7445B49CE82D209EC
         playerID, info = string.split(info, ' ', 1)
 
         if info[:1] != '\\':
@@ -452,10 +437,11 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
         data['team'] = self.getTeam(t)
         
         
+        if data.has_key('id'):
+            data['guid'] = data['id']
+            del data['id']
         if data.has_key('cl_guid'):
             data['guid'] = data['cl_guid']
-        if data.has_key('guid'):
-            data['guid'] = data['guid']
         
         return data
 
@@ -484,15 +470,23 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
         #self.debug('gameTypeInt: %s' % gameTypeInt)
         
         if gameTypeInt == '0':
-            _gameType = 'dm'        # Deathmatch
+            _gameType = 'dm'        # Free for all
         elif gameTypeInt == '1':
-            _gameType = 'du'        # Duel
+            _gameType = 'du'        # Tourney
         elif gameTypeInt == '3':
-            _gameType = 'tdm'       # Team Death Match
+            _gameType = 'tdm'       # Team Deathmatch
         elif gameTypeInt == '4':
-            _gameType = 'ts'        # Team Survivor (Round TDM)
-        elif gameTypeInt == '5':
-            _gameType = 'br'        # Bank Robbery
+            _gameType = 'ctf'        # Capture The Flag
+        elif gameTypeInt == '8':
+            _gameType = 'el'        # Elimination
+        elif gameTypeInt == '9':
+            _gameType = 'ctfel'        # CTF Elimination
+        elif gameTypeInt == '10':
+            _gameType = 'lms'        # Last Man Standing
+        elif gameTypeInt == '11':
+            _gameType = 'del'        # Double Domination
+        elif gameTypeInt == '12':
+            _gameType = 'dom'        # Domination
         
         #self.debug('_gameType: %s' % _gameType)
         return _gameType
@@ -516,7 +510,49 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
         return maps
 
     def getNextMap(self):
-        return 'Command not supported!'
+        data = self.write('nextmap')
+        nextmap = self.findNextMap(data)
+        if nextmap:
+            return nextmap
+        else:
+            return 'no nextmap set or it is in an unrecognized format !'
+
+    def findNextMap(self, data):
+        # "nextmap" is: "vstr next4; echo test; vstr aupo3; map oasago2"
+        # the last command in the line is the one that decides what is the next map
+        # in a case like : map oasago2; echo test; vstr nextmap6; vstr nextmap3
+        # the parser will recursively look each last vstr var, and if it can't find a map, fallback to the last map command
+        self.debug('Extracting nextmap name from: %s' % (data))
+        nextmapregex = re.compile(r'.*("|;)\s*((?P<vstr>vstr (?P<vstrnextmap>[a-z0-9]+))|(?P<map>map (?P<mapnextmap>[a-z0-9]+)))', re.IGNORECASE)
+        m = re.match(nextmapregex, data)
+        if m:
+            if m.group('map'):
+                self.debug('Found nextmap: %s' % (m.group('mapnextmap')))
+                return m.group('mapnextmap')
+            elif m.group('vstr'):
+                self.debug('Nextmap is redirecting to var: %s' % (m.group('vstrnextmap')))
+                data = self.write(m.group('vstrnextmap'))
+                result = self.findNextMap(data) # recursively dig into the vstr vars to find the last map called
+                if result: # if a result was found in a deeper level, then we return it to the upper level, until we get back to the root level
+                    return result
+                else: # if none could be found, then try to find a map command in the current string
+                    nextmapregex = re.compile(r'.*("|;)\s*(?P<map>map (?P<mapnextmap>[a-z0-9]+))"', re.IGNORECASE)
+                    m = re.match(nextmapregex, data)
+                    if m.group('map'):
+                        self.debug('Found nextmap: %s' % (m.group('mapnextmap')))
+                        return m.group('mapnextmap')
+                    else: # if none could be found, we go up a level by returning None (remember this is done recursively)
+                        self.debug('No nextmap found in this string !')
+                        return None
+        else:
+            self.debug('No nextmap found in this string !')
+            return None
+
+    def rotateMap(self):
+        """\
+        load the next map/level
+        """
+        self.write('vstr nextmap')
 
     def sync(self):
         plist = self.getPlayerList()
@@ -547,10 +583,6 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
         return mlist
 
     def connectClient(self, ccid):
-        if self.PunkBuster:
-            self.debug('Getting the (PunkBuster) Playerlist')
-        else:
-            self.debug('Getting the (status) Playerlist')
         players = self.getPlayerList()
         self.verbose('connectClient() = %s' % players)
 
@@ -577,38 +609,30 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
         : dumpuser 5
         Player 5 is not on the server
         
-       : dumpuser 0
+        ]\rcon dumpuser 0
         userinfo
         --------
-        name                Courgette
-        ip                  11.222.111.33
-        rate                25000
-        snaps               20
-        model               wq_male3/red
-        handicap            100
-        sex                 male
-        cg_predictItems     1
-        team_model          wq_male1
-        cl_voip             1
+        ip                  81.56.143.41
         cg_cmdTimeNudge     0
-        cg_delag            1
-        g_blueTeam          Outlaws
-        g_redTeam           Lawmen
-        team_headmodel      *james
-        headmodel           sarge
+        cg_delag            0
+        cg_scorePlums       1
+        cl_voip             0
+        cg_predictItems     1
+        cl_anonymous        0
+        sex                 male
+        handicap            100
+        color2              7
+        color1              2
+        team_headmodel      sarge/classic
+        team_model          sarge/classic
+        headmodel           sarge/classic
+        model               sarge/classic
+        snaps               20
+        rate                25000
+        name                Courgette
         teamtask            0
-        cl_version          1.1b4 20100116
-        cl_md5              9F1646464ADFA64A654A6546546465E9
-        sa_engine_check1    7B135FE5ACACACACAAC4656546546543
-        cl_guid             0F4E000FFF0FFC00000ACCDE0000FF8A
-        ui_singlePlayerActive0
-        sa_engine_in_use    1
-        teamoverlay         1
-        cg_debugDelag       0
-        cg_latentSnaps      0
-        cg_latentCmds       0
-        cg_plOut            0
-
+        cl_guid             201AB4BBC40B4EC7445B49CE82D209EC
+        teamoverlay         0
         """
         data = self.write('dumpuser %s' % cid)
         if not data:
@@ -629,29 +653,3 @@ class Smg11Parser(b3.parsers.q3a.Q3AParser):
 
         return datatransformed
 
-#---- Documentation --------------------------------------------------------------------------------
-"""
-
-//infos clienuserinfochanged
-//0 = player_ID
-//n = name
-//t = team
-//c = class
-//r = rank
-//m = medals
-//s = skills
-//dn = disguised name
-//dr = disguised rank
-//w = weapon
-//lw = weapon last used
-//sw = 2nd weapon (not sure)
-//mu = muted
-//ref = referee
-//lw = latched weapon (weapon on next spawn)
-//sw = latched secondary weapon (secondary weapon on next spawn)
-//p = privilege level (peon = 0, referee (vote), referee (password), semiadmin, rconauth) (etpro only)
-//ss = stats restored by stat saver (etpro only)
-//sc = shoutcaster status (etpro only)
-//tv = ETTV slave (etpro only)
-
-"""

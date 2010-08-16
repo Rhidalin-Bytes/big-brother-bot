@@ -40,8 +40,13 @@ myDataFiles = [
 setup(
     name = "BigBrotherBot",
     version = getVersion(),
-    url = "http://www.bigbrotherbot.com/",
-    console = ["b3_run.py"],
+    url = "http://www.bigbrotherbot.net/",
+    console = [
+        {
+            "script" : "b3_run.py",
+            "icon_resources": [(0, "py2exe_builder/b3.ico")]
+        }
+    ],
     zipfile = None, 
     data_files = myDataFiles,
     options = {

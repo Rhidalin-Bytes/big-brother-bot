@@ -1,5 +1,5 @@
 #
-# BigBrotherBot(B3) (www.bigbrotherbot.com)
+# BigBrotherBot(B3) (www.bigbrotherbot.net)
 # Copyright (C) 2005 Michael "ThorN" Thornton
 # 
 # This program is free software; you can redistribute it and/or modify
@@ -60,7 +60,7 @@ def checkUpdate(currentVersion, singleLine=True, showErrormsg=False):
  |                                    |
  |                                    |
  | A newer version of B3 is available |
- |     See www.bigbrotherbot.com      |
+ |     See www.bigbrotherbot.net      |
  |                                    |
  |                                    |
  +------------------------------------+
